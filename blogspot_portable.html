@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alokasi Pendapatan</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#0ea5e9',
+            secondary: '#64748b',
+            success: '#22c55e',
+            danger: '#ef4444',
+            warning: '#f59e0b',
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- html2canvas -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- Babel for compiling React/TSX in browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Import Map for React & Lucide -->
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+      "lucide-react": "https://esm.sh/lucide-react@0.263.1"
+    }
+  }
+  </script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Main Application Script -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef } from 'react';
+    import ReactDOM from 'react-dom/client';
+    import { 
+      Download, Share2, Plus, Settings, Wallet, 
+      PieChart, List, TrendingDown, AlertCircle, 
+      X, Trash2 
+    } from 'lucide-react';
+
+    // --- CONSTANTS & UTILS ---
+    
+    const DEFAULT_CATEGORIES = [
+      { id: 'pokok', name: 'Kebutuhan Pokok', color: '#ea580c', isDefault: true },
+      { id: 'utilitas', name: 'Utilitas & Tagihan', color: '#ca8a04', isDefault: true },
+      { id: 'keluarga', name: 'Kebutuhan Keluarga', color: '#2563eb', isDefault: true },
+      { id: 'keuangan', name: 'Keuangan & Perencanaan', color: '#16a34a', isDefault: true },
+      { id: 'transportasi', name: 'Transportasi', color: '#475569', isDefault: true },
+      { id: 'kesehatan', name: 'Kesehatan', color: '#dc2626', isDefault: true },
+      { id: 'pendidikan', name: 'Pendidikan', color: '#7c3aed', isDefault: true },
+      { id: 'rumah', name: 'Perawatan Rumah', color: '#0891b2', isDefault: true },
+      { id: 'sosial', name: 'Sosial', color: '#db2777', isDefault: true },
+      { id: 'hiburan', name: 'Hiburan & Gaya Hidup', color: '#c026d3', isDefault: true },
+      { id: 'darurat', name: 'Dana Tidak Terduga', color: '#be123c', isDefault: true },
+    ];
+
+    const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    
+    const INITIAL_PERIOD = {
+      month: new Date().getMonth(),
+      year: new Date().getFullYear(),
+    };
+
+    const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 1 + i);
+
+    const RAW_KEYWORDS = [
+      { ids: ['beras', 'nasi', 'sayur', 'buah', 'telur', 'daging', 'ikan', 'minyak', 'gula', 'garam', 'tepung', 'mie', 'roti', 'air'], catId: 'pokok' },
+      { ids: ['listrik', 'wifi', 'airpam', 'pulsa', 'paketdata', 'gas', 'lpg', 'iuran', 'sampah'], catId: 'utilitas' },
+      { ids: ['popok', 'susu', 'mainan', 'seragam', 'sepatu', 'pakaian', 'tas', 'hijab', 'kosmetik', 'perawatan'], catId: 'keluarga' },
+      { ids: ['tabungan', 'investasi', 'asuransi', 'bpjs', 'cicilan', 'angsuran', 'deposito'], catId: 'keuangan' },
+      { ids: ['bensin', 'parkir', 'tol', 'ojek', 'taksi', 'bus', 'kereta', 'servis', 'oli', 'ban'], catId: 'transportasi' },
+      { ids: ['obat', 'vitamin', 'dokter', 'klinik', 'rumahsakit', 'teslab', 'masker', 'alkohol'], catId: 'kesehatan' },
+      { ids: ['sekolah', 'les', 'buku', 'alat', 'kursus', 'pelatihan', 'seminar', 'ujian'], catId: 'pendidikan' },
+      { ids: ['sabun', 'deterjen', 'pewangi', 'pel', 'sapu', 'vacuum', 'pembersih', 'lap'], catId: 'rumah' },
+      { ids: ['kondangan', 'sumbangan', 'donasi', 'hadiah', 'arisan', 'tahlilan', 'syukuran'], catId: 'sosial' },
+      { ids: ['hiburan', 'nongkrong', 'nonton', 'liburan', 'game', 'musik', 'streaming', 'kopi'], catId: 'hiburan' },
+      { ids: ['darurat', 'perbaikan', 'kehilangan', 'denda', 'rusak'], catId: 'darurat' },
+    ];
+
+    const AUTO_CATEGORY_KEYWORDS = RAW_KEYWORDS.flatMap(group => 
+      group.ids.map(keyword => ({ keyword, catId: group.catId }))
+    ).sort((a, b) => b.keyword.length - a.keyword.length);
+
+    const formatCurrency = (amount) => {
+      return new Intl.NumberFormat('id-ID', {
+        style: 'decimal',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount);
+    };
+
+    const generateId = () => Math.random().toString(36).substr(2, 9);
+
+    // --- COMPONENTS ---
+
+    const Button = ({ variant = 'primary', size = 'md', className = '', children, ...props }) => {
+      const baseStyles = "inline-flex items-center justify-center font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg";
+      const variants = {
+        primary: "bg-primary text-white hover:bg-sky-600 focus:ring-sky-500",
+        secondary: "bg-slate-200 text-slate-800 hover:bg-slate-300 focus:ring-slate-400",
+        danger: "bg-red-500 text-white hover:bg-red-600 focus:ring-red-500",
+        success: "bg-green-600 text-white hover:bg-green-700 focus:ring-green-600",
+        outline: "border-2 border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50",
+      };
+      const sizes = {
+        sm: "px-3 py-1.5 text-sm",
+        md: "px-4 py-2 text-base",
+        lg: "px-6 py-3 text-lg",
+      };
+      return (
+        <button className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`} {...props}>
+          {children}
+        </button>
+      );
+    };
+
+    const TransactionRow = ({ index, transaction, categories, runningBalance, onChange, onDelete, isFirstRow = false }) => {
+      const handleNumberChange = (e, field) => {
+        const rawVal = e.target.value.replace(/[^0-9]/g, '');
+        const val = parseInt(rawVal, 10);
+        onChange(transaction.id, field, isNaN(val) ? 0 : val);
+      };
+      const selectedCategory = categories.find(c => c.id === transaction.categoryId);
+
+      return (
+        <tr className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isFirstRow ? 'bg-slate-50 font-medium' : ''}`}>
+          <td className="p-2 md:p-3 text-center text-slate-500 w-8 hidden md:table-cell text-xs md:text-sm">{index + 1}</td>
+          <td className="p-1 md:p-2 min-w-[100px] md:min-w-[150px]">
+            <input
+              type="text"
+              value={transaction.description}
+              onChange={(e) => onChange(transaction.id, 'description', e.target.value)}
+              placeholder={isFirstRow ? "Penghasilan" : "Keterangan"}
+              className="w-full bg-transparent border border-transparent hover:border-slate-200 focus:border-primary focus:ring-0 rounded px-1 md:px-2 py-1 outline-none text-slate-800 text-xs md:text-sm"
+              readOnly={isFirstRow} 
+            />
+          </td>
+          <td className="p-1 md:p-2 min-w-[90px] md:min-w-[140px]">
+            <div className="relative">
+              <select
+                value={transaction.categoryId || ''}
+                onChange={(e) => onChange(transaction.id, 'categoryId', e.target.value || null)}
+                className="w-full appearance-none bg-transparent border border-transparent hover:border-slate-200 focus:border-primary rounded px-1 md:px-2 py-1 pr-4 md:pr-6 outline-none text-xs md:text-sm text-slate-700 cursor-pointer text-ellipsis overflow-hidden"
+                style={{ 
+                  color: selectedCategory ? selectedCategory.color : undefined,
+                  fontWeight: selectedCategory ? 600 : 400
+                }}
+              >
+                <option value="">-</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id} style={{ color: 'black' }}>{cat.name}</option>
+                ))}
+              </select>
+              {selectedCategory && (
+                <div className="absolute right-0 md:right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 md:w-2 md:h-2 rounded-full" style={{ backgroundColor: selectedCategory.color }} />
+              )}
+            </div>
+          </td>
+          <td className="p-1 md:p-2 min-w-[70px] md:min-w-[120px]">
+            {isFirstRow || transaction.income > 0 || (transaction.expense === 0 && !isFirstRow) ? (
+              <input
+                type="text"
+                value={transaction.income === 0 ? '' : formatCurrency(transaction.income)}
+                onChange={(e) => handleNumberChange(e, 'income')}
+                placeholder="-"
+                className="w-full text-right bg-transparent border border-transparent hover:border-slate-200 focus:border-success focus:text-success focus:ring-0 rounded px-1 md:px-2 py-1 outline-none text-success font-medium text-xs md:text-sm"
+              />
+            ) : (
+              <div className="text-right text-slate-300 px-1 md:px-2 text-xs md:text-sm">-</div>
+            )}
+          </td>
+          <td className="p-1 md:p-2 min-w-[70px] md:min-w-[120px]">
+            {!isFirstRow && (
+              <input
+                type="text"
+                value={transaction.expense === 0 ? '' : formatCurrency(transaction.expense)}
+                onChange={(e) => handleNumberChange(e, 'expense')}
+                placeholder="-"
+                className="w-full text-right bg-transparent border border-transparent hover:border-slate-200 focus:border-danger focus:text-danger focus:ring-0 rounded px-1 md:px-2 py-1 outline-none text-danger font-medium text-xs md:text-sm"
+              />
+            )}
+            {isFirstRow && <div className="text-right text-slate-300 px-1 md:px-2 text-xs md:text-sm">-</div>}
+          </td>
+          <td className="p-1 md:p-2 min-w-[80px] md:min-w-[120px] text-right font-bold text-slate-700 text-xs md:text-sm">
+            {formatCurrency(runningBalance)}
+          </td>
+          <td className="p-1 md:p-2 w-8 md:w-10 text-center">
+            {!isFirstRow && (
+              <button
+                onClick={() => onDelete(transaction.id)}
+                className="text-slate-300 hover:text-danger p-1 rounded-full hover:bg-red-50 transition-colors"
+                title="Hapus Baris"
+              >
+                <Trash2 size={14} className="md:w-4 md:h-4" />
+              </button>
+            )}
+          </td>
+        </tr>
+      );
+    };
+
+    const SettingsModal = ({ isOpen, onClose, categories, showCategories = true, onAddCategory, onDeleteCategory, phoneNumber, onPhoneNumberChange }) => {
+      const [newCatName, setNewCatName] = useState('');
+      const [newCatColor, setNewCatColor] = useState('#6366f1');
+
+      if (!isOpen) return null;
+
+      const handleAdd = () => {
+        if (newCatName.trim()) {
+          onAddCategory(newCatName.trim(), newCatColor);
+          setNewCatName('');
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-bold text-slate-800">
+                {showCategories ? 'Pengaturan' : 'Atur Nomor WhatsApp'}
+              </h2>
+              <button onClick={onClose} className="text-slate-500 hover:text-slate-700">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-8">
+              <section>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3">WhatsApp Data</h3>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-600 block">Nomor HP (Format: 628...)</label>
+                  <input 
+                    type="text" 
+                    value={phoneNumber}
+                    onChange={(e) => onPhoneNumberChange(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="628123456789"
+                    className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                    autoFocus={!showCategories}
+                  />
+                  <p className="text-xs text-slate-400">Nomor ini akan digunakan sebagai tujuan default pengiriman laporan.</p>
+                </div>
+              </section>
+              {showCategories && (
+                <section>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3">Manajemen Kategori</h3>
+                  <div className="flex gap-2 mb-4 items-end">
+                    <div className="flex-1">
+                      <label className="text-xs text-slate-400 mb-1 block">Nama Kategori</label>
+                      <input
+                        type="text"
+                        value={newCatName}
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary outline-none"
+                        placeholder="Contoh: Sedekah"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Warna</label>
+                      <input 
+                        type="color" 
+                        value={newCatColor}
+                        onChange={(e) => setNewCatColor(e.target.value)}
+                        className="h-[38px] w-12 rounded cursor-pointer border p-1"
+                      />
+                    </div>
+                    <Button onClick={handleAdd} size="md" className="mb-[1px]">
+                      <Plus size={18} />
+                    </Button>
+                  </div>
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                    {categories.map((cat) => (
+                      <div key={cat.id} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cat.color }} />
+                          <span className="text-sm font-medium text-slate-700">{cat.name}</span>
+                          {cat.isDefault && <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">Default</span>}
+                        </div>
+                        {!cat.isDefault && (
+                          <button onClick={() => onDeleteCategory(cat.id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+            <div className="p-4 border-t bg-slate-50 flex justify-end">
+              <Button onClick={onClose}>Simpan & Tutup</Button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const Dashboard = ({ transactions, categories }) => {
+      const expenseTransactions = transactions.filter(t => t.expense > 0);
+      const totalExpense = expenseTransactions.reduce((acc, t) => acc + t.expense, 0);
+      const totalIncome = transactions.reduce((acc, t) => acc + t.income, 0);
+      const remainingBalance = totalIncome - totalExpense;
+      const categoryTotals = {};
+      
+      expenseTransactions.forEach(t => {
+        const catId = t.categoryId || 'uncategorized';
+        categoryTotals[catId] = (categoryTotals[catId] || 0) + t.expense;
+      });
+
+      const data = Object.entries(categoryTotals)
+        .map(([catId, amount]) => {
+          const category = categories.find(c => c.id === catId);
+          return {
+            id: catId,
+            name: category ? category.name : 'Tanpa Kategori',
+            color: category ? category.color : '#cbd5e1',
+            amount,
+            percentage: totalExpense > 0 ? (amount / totalExpense) * 100 : 0
+          };
+        })
+        .sort((a, b) => b.amount - a.amount);
+
+      return (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-2 gap-3 md:gap-4">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center">
+                <div className="p-2 bg-red-50 rounded-full mb-2 text-red-500">
+                    <TrendingDown size={20} />
+                </div>
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Total Keluar</p>
+                <p className="text-lg md:text-xl font-bold text-slate-800">{formatCurrency(totalExpense)}</p>
+            </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center">
+                <div className={`p-2 rounded-full mb-2 ${remainingBalance >= 0 ? 'bg-sky-50 text-primary' : 'bg-red-50 text-red-500'}`}>
+                    <PieChart size={20} />
+                </div>
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">Sisa Saldo</p>
+                <p className={`text-lg md:text-xl font-bold ${remainingBalance >= 0 ? 'text-primary' : 'text-red-500'}`}>
+                    {formatCurrency(remainingBalance)}
+                </p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-1">
+                <h3 className="text-slate-700 font-bold text-base">Persentase Pengeluaran</h3>
+                <span className="text-xs text-slate-400 font-normal">({data.length} Kategori)</span>
+            </div>
+            {data.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+                <AlertCircle className="w-10 h-10 mb-2 opacity-50" />
+                <p className="text-sm">Belum ada data pengeluaran.</p>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {data.map((item) => (
+                  <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-2 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shadow-sm" style={{ backgroundColor: item.color }}>
+                            {item.percentage.toFixed(0)}%
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm text-slate-700">{item.name}</p>
+                          <p className="text-xs text-slate-400">Rp {formatCurrency(item.amount)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-full bg-slate-50 rounded-full h-1.5 mt-2 overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${item.percentage}%`, backgroundColor: item.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // --- MAIN APP ---
+
+    function App() {
+      const [isLoaded, setIsLoaded] = useState(false);
+      const [activeTab, setActiveTab] = useState('input');
+      const [period, setPeriod] = useState(INITIAL_PERIOD);
+      const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+      const [transactions, setTransactions] = useState([
+        { id: 'initial-income', description: 'Penghasilan', categoryId: null, income: 0, expense: 0 }
+      ]);
+      const [whatsappNumber, setWhatsappNumber] = useState('');
+      const [savingsPercent, setSavingsPercent] = useState(20);
+      const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+      const [showSettingsCategories, setShowSettingsCategories] = useState(true);
+
+      const tableRef = useRef(null);
+      const exportRef = useRef(null);
+
+      useEffect(() => {
+        const savedData = localStorage.getItem('budgetApp_v1');
+        if (savedData) {
+          try {
+            const parsed = JSON.parse(savedData);
+            if (parsed.categories) setCategories(parsed.categories);
+            if (parsed.transactions) setTransactions(parsed.transactions);
+            if (parsed.period) setPeriod(parsed.period);
+            if (parsed.whatsappNumber) setWhatsappNumber(parsed.whatsappNumber);
+            if (parsed.savingsPercent) setSavingsPercent(parsed.savingsPercent);
+          } catch (e) {
+            console.error("Failed to parse saved data", e);
+          }
+        }
+        setIsLoaded(true);
+      }, []);
+
+      useEffect(() => {
+        if (isLoaded) {
+          const dataToSave = { categories, transactions, period, whatsappNumber, savingsPercent };
+          localStorage.setItem('budgetApp_v1', JSON.stringify(dataToSave));
+        }
+      }, [categories, transactions, period, whatsappNumber, savingsPercent, isLoaded]);
+
+      const totalIncome = transactions.reduce((acc, t) => acc + t.income, 0);
+      const totalExpense = transactions.reduce((acc, t) => acc + t.expense, 0);
+      const finalBalance = totalIncome - totalExpense;
+
+      const handleAddRow = () => {
+        const newTx = {
+          id: generateId(),
+          description: '',
+          categoryId: null,
+          income: 0,
+          expense: 0
+        };
+        setTransactions([...transactions, newTx]);
+      };
+
+      const handleChangeRow = (id, field, value) => {
+        setTransactions(prev => prev.map(t => {
+          if (t.id !== id) return t;
+          let updates = { [field]: value };
+          if (field === 'description') {
+            const lowerDesc = value.toLowerCase();
+            const match = AUTO_CATEGORY_KEYWORDS.find(item => lowerDesc.includes(item.keyword));
+            if (match) {
+              const categoryExists = categories.some(c => c.id === match.catId);
+              if (categoryExists) updates = { ...updates, categoryId: match.catId };
+            }
+          }
+          return { ...t, ...updates };
+        }));
+      };
+
+      const handleDeleteRow = (id) => {
+        setTransactions(prev => prev.filter(t => t.id !== id));
+      };
+
+      const handleAddSavings = () => {
+        const amount = Math.round(transactions[0].income * (savingsPercent / 100));
+        const savingsCategory = categories.find(c => c.name.includes('Keuangan') || c.name.includes('Tabungan'));
+        const newTx = {
+          id: generateId(),
+          description: `Tabungan (${savingsPercent}%)`,
+          categoryId: savingsCategory ? savingsCategory.id : null,
+          income: 0,
+          expense: amount
+        };
+        setTransactions([...transactions, newTx]);
+      };
+
+      const generateTableImage = async () => {
+        if (exportRef.current) {
+          try {
+            const canvas = await html2canvas(exportRef.current, {
+              scale: 1, backgroundColor: '#ffffff', useCORS: true, logging: false, width: 1080, height: 1920, windowWidth: 1080, windowHeight: 1920
+            });
+            return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+          } catch (error) {
+            console.error("Error generating image:", error);
+            return null;
+          }
+        }
+        return null;
+      };
+
+      const handleExportJPG = async () => {
+        const blob = await generateTableImage();
+        if (blob) {
+          const link = document.createElement('a');
+          link.download = `Laporan-Keuangan-${MONTHS[period.month]}-${period.year}.jpg`;
+          link.href = URL.createObjectURL(blob);
+          link.click();
+        }
+      };
+
+      const handleShareWhatsApp = async () => {
+        if (!whatsappNumber) {
+          setShowSettingsCategories(false);
+          setIsSettingsOpen(true);
+          alert('Mohon isi nomor WhatsApp terlebih dahulu.');
+          return;
+        }
+
+        const title = `*Laporan Keuangan ${MONTHS[period.month]} ${period.year}*`;
+        const summary = `Total Masuk: Rp ${formatCurrency(totalIncome)}\nTotal Keluar: Rp ${formatCurrency(totalExpense)}\nSisa Saldo: Rp ${formatCurrency(finalBalance)}`;
+
+        let imageFile = null;
+        try {
+            const blob = await generateTableImage();
+            if (blob) {
+                imageFile = new File([blob], `Laporan-${MONTHS[period.month]}-${period.year}.jpg`, { type: 'image/jpeg' });
+            }
+        } catch (e) { console.error("Failed to generate image", e); }
+
+        if (imageFile && navigator.canShare && navigator.canShare({ files: [imageFile] })) {
+            try {
+                await navigator.share({ files: [imageFile], title: title, text: `${title}\n${summary}` });
+                return;
+            } catch (e) { console.log("Share cancelled", e); }
+        } 
+        
+        const detailList = transactions
+          .filter(t => t.income > 0 || t.expense > 0)
+          .map((t, i) => {
+            const amount = t.income > 0 ? t.income : t.expense;
+            const catName = categories.find(c => c.id === t.categoryId)?.name || '-';
+            return `${i + 1}. ${t.description} [${catName}] : Rp ${formatCurrency(amount)}`;
+          }).join('%0A');
+
+        const message = `${title}%0A${summary}%0A*Detail:*%0A${detailList}`;
+        window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
+      };
+
+      const handleMainIncomeChange = (val) => {
+        const num = parseInt(val.replace(/[^0-9]/g, ''), 10) || 0;
+        const firstRow = transactions[0];
+        handleChangeRow(firstRow.id, 'income', num);
+      };
+
+      let runningBalance = 0;
+      let exportRunningBalance = 0;
+
+      return (
+        <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-24">
+          <header className="bg-white shadow-sm sticky top-0 z-20">
+            <div className="max-w-4xl mx-auto px-3 md:px-4 py-3 md:py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="bg-primary p-1.5 md:p-2 rounded-lg text-white">
+                  <Wallet size={20} className="md:w-6 md:h-6" />
+                </div>
+                <div>
+                  <h1 className="font-bold text-base md:text-lg leading-tight">Alokasi Pendapatan</h1>
+                  <p className="text-[10px] md:text-xs text-slate-500">Kelola keuangan rumah tangga</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowSettingsCategories(true); setIsSettingsOpen(true); }} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
+                <Settings size={20} className="md:w-6 md:h-6" />
+              </button>
+            </div>
+          </header>
+
+          <main className="max-w-4xl mx-auto px-2 md:px-4 py-4 md:py-6 space-y-4 md:space-y-6">
+            <div className="flex p-1 bg-slate-200/50 rounded-xl mx-auto max-w-sm">
+              <button onClick={() => setActiveTab('input')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs md:text-sm font-medium rounded-lg transition-all ${activeTab === 'input' ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}>
+                <List size={16} /> Tabel
+              </button>
+              <button onClick={() => setActiveTab('dashboard')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs md:text-sm font-medium rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white text-primary shadow-sm ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}>
+                <PieChart size={16} /> Dashboard
+              </button>
+            </div>
+            
+            {activeTab === 'input' ? (
+              <div className="space-y-4 md:space-y-6 animate-in fade-in duration-300">
+                <section className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3 md:space-y-4">
+                  <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                     <div className="w-full md:flex-1">
+                      <label className="block text-xs md:text-sm font-semibold text-slate-600 mb-1 md:mb-2">Penghasilan Bulan Ini</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm md:text-base">Rp</span>
+                        <input type="text" value={transactions[0].income ? formatCurrency(transactions[0].income) : ''} onChange={(e) => handleMainIncomeChange(e.target.value)} placeholder="0" className="w-full pl-9 md:pl-12 pr-4 py-2 md:py-4 text-lg md:text-2xl font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder:text-slate-300" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 no-scrollbar">
+                      <select value={period.month} onChange={(e) => setPeriod({ ...period, month: parseInt(e.target.value) })} className="bg-white border border-slate-200 text-slate-700 text-xs md:text-sm rounded-lg focus:ring-primary focus:border-primary block p-2 md:p-2.5 min-w-[90px]">
+                        {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                      </select>
+                      <select value={period.year} onChange={(e) => setPeriod({ ...period, year: parseInt(e.target.value) })} className="bg-white border border-slate-200 text-slate-700 text-xs md:text-sm rounded-lg focus:ring-primary focus:border-primary block p-2 md:p-2.5 min-w-[70px]">
+                        {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                       <div className="flex items-center gap-1 md:gap-2 bg-green-50 p-1 md:p-2 rounded-lg border border-green-100 ml-auto md:ml-0">
+                        <span className="text-[10px] md:text-xs font-bold text-green-700 whitespace-nowrap mr-1">Rencana Tabungan:</span>
+                        <select value={savingsPercent} onChange={(e) => setSavingsPercent(parseInt(e.target.value))} className="bg-white text-xs border-green-200 rounded px-1 py-1 text-green-700 font-bold focus:outline-none focus:ring-1 focus:ring-green-500">
+                          {[10, 15, 20, 25, 30].map(p => <option key={p} value={p}>{p}%</option>)}
+                        </select>
+                        <button onClick={handleAddSavings} className="text-xs bg-green-600 text-white px-2 py-1 md:px-3 md:py-1.5 rounded-md hover:bg-green-700 transition-colors shadow-sm font-medium whitespace-nowrap">Simpan</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <div ref={tableRef} className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden relative">
+                  <div className="bg-primary p-3 md:p-4 text-white">
+                    <div className="flex justify-between items-end">
+                       <div><h2 className="text-lg md:text-xl font-bold">Laporan Keuangan</h2><p className="text-sky-100 text-xs md:text-sm">{MONTHS[period.month]} {period.year}</p></div>
+                       <div className="text-right"><p className="text-[10px] md:text-xs text-sky-100 uppercase tracking-wider">Sisa Saldo</p><p className="text-xl md:text-2xl font-bold">{formatCurrency(finalBalance)}</p></div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="text-[10px] md:text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-2 py-2 md:px-3 md:py-3 w-8 text-center hidden md:table-cell">No</th>
+                          <th className="px-1 py-2 md:px-2 md:py-3 min-w-[100px] md:min-w-[150px]">Ket</th>
+                          <th className="px-1 py-2 md:px-2 md:py-3 min-w-[90px] md:min-w-[140px]">Kat</th>
+                          <th className="px-1 py-2 md:px-2 md:py-3 text-right min-w-[70px] md:min-w-[120px]">Msk</th>
+                          <th className="px-1 py-2 md:px-2 md:py-3 text-right min-w-[70px
